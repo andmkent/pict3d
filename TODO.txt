@@ -1,0 +1,198 @@
+======================================================================================================
+Easy
+
+Add Rect (list of intervals) type
+ * Return from `bounding-rectangle`
+ * Accept as argument to shape constructor fuctions
+
+Documentation
+ * Add Differentiable, Smooth, deform, tessellate, etc.
+ * Add "How Do I" section
+ * Add notes about performance characteristics
+
+Pict3D constructor arguments
+ * Raise errors when out of range
+ * Clamp to reasonable values when in range but unreasonable (e.g. subnormal)
+
+OpenGL >= 3.2 render paths
+ * Directional light
+ * Point light
+ * Point light shell
+ * Rectangle
+ * Cylinder
+ * Disk
+
+Reorder arguments in `call-with-*` functions and macros
+
+Make dir+ and dir- take multiple arguments
+
+Allow big-bang3d's frame-delay argument to be zero
+
+======================================================================================================
+Medium
+
+Try doing lighting pass before solid object passes, collecting lighting information in a buffer
+
+Face soup representation
+ * Allow polygons (esp. quads)
+ ? Allow non-planar polygons (requires BSP planes to have a thickness based on vertex-plane distance)
+ * Fast BSP
+ * Fast vertex merge (possibly based on BSP)
+
+Replace triangle-mesh-shape with face-soup-shape to reduce vertex merge and BSP recomputation
+
+High-level face soup shape operations
+ * Combine
+ * CSG intersect
+ * CSG union
+ * CSG subtract
+ * Simplify (edge aware)
+
+Low-level face soup shape operations
+ * Goal: allow defining `deform`
+ * Goal: allow defining `adaptive-tessellate`
+ * Goal: allow defining `plane-vertex-normals`, `merge-vertex-normals`, `smooth-vertex-normals`
+ * Replace vertices
+    * Given vertex only
+    * Given vertex + neighboring vertices
+    * Given vertex + neighboring faces
+ * Replace edges
+    * Given edge only
+    * Given edge + neighboring edges
+    * Given edge + neighboring faces
+ * Replace faces
+    * Given face only
+    * Given face + neighboring faces
+
+New shape constructors
+ * polygon
+ * torus
+ * freeze + send vertices to reside on card
+ * heightmap/terrain (try a geometry shader)
+ * skybox (render scene in six directions from camera, then construct a texture-mapped rect)
+ * wrap with texture/skybox
+ * directional light volumes (e.g. rectangle, ellipsoid, cylinder)
+ * ambient light volumes
+
+Use GL_MAP_UNSYNCHRONIZED_BIT and round-robin (should save 30% according to tests)
+
+? Physically-based transparency (i.e. proper transmission fractions)
+
+? Special-case transformation matrix struct for translation, uniform scaling, and rotation
+
+? Pause big-bang3d programs to get an interactive GUI
+
+======================================================================================================
+Hard
+
+Never produce +nan.0 internally
+
+Automate marshaling vertex data
+
+Add networking to pict3d/universe
+
+Figure out a nice functional API for textures
+
+Occlusion-based lighting
+ * Screen-space ambient occlusion (paper "Scalable Ambient Obscurance")
+ * Shadow mapping
+
+pict3d%
+ * Save/load pict3d% snips (waiting on Robby's redesign)
+ * Make pict3d% snips display properly in algebraic stepper in student languages
+
+Abstract the process of applying rendering passes
+
+Find a good way to wire shaders with rendering passes
+
+S-expression-based shader language that compiles to GLSL and can be run on the CPU for debugging
+
+======================================================================================================
+Operations
+
+Planned operations
+ * bevel
+ * cap holes
+ * CSG: subtract, intersect, union
+ * debug: lattice (vertices, edges, or both)
+ * flip faces
+ * merge vertices
+ * push vertices (along normal)
+ * relax vertices (move toward average of neighborhood)
+ * retriangulate
+ * simplify
+ * smooth-surfaces (Catmull-Clark or Stam-Loop? requre tessellation first?)
+ * stitch cracks
+ * sweeps: extrude (along axis), loft (along path), lathe (around center)
+
+Bevel
+ * size
+ * number of segments or angle threshold
+ * round?
+ * use a given profile?
+
+Merge vertices (see Erikson)
+ * compute using connected component analysis
+ * average groups of equivalent vertices as a set
+ * use a hashed uniform grid
+
+Stitch
+ * close small holes
+ * snap geometry on sides of cracks and gaps
+ * break geometry at t-junctions
+
+Retriangulate (simplifies soups without changing shapes, use on all new triangles after CSG ops)
+ * merge coplanar polygons using connected component analysis
+ * retriangulate using ear clipping
+
+======================================================================================================
+Deformations
+
+Planned deformations
+ * affect region
+ * bend
+ * melt
+ * noise
+ * spherify
+ * squeeze
+ * stretch
+ * taper
+ * twist
+
+Affect Region: push and pull points on a mesh, with falloff
+ * start point
+ * end point or direction
+ ? multiple start points and directions
+ * ignore back facing?
+ * falloff (size parameter)
+ * pinch (shape parameter)
+ * bubble (shape parameter)
+
+Bend
+ * center, axis
+ * angle
+ * upper and lower limit
+
+Melt
+ * time
+ * solidity
+ * axis, bottom (basically a plane)
+
+Squeeze
+ * center, axis
+ * bulge amount, bulge curve
+ * squeeze amount, squeeze curve
+ * limits of some kind
+ * amount of squeeze vs. bulge
+ * volume (a percentage?)
+
+Stretch
+ * center, axis
+ * stretch, amplify
+ * limits of some kind
+
+Twist
+ * center, axis
+ * degrees per unit
+ * bias (bunched up at either end, or uniform)
+ * upper and lower limits
