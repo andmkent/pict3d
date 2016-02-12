@@ -40,19 +40,19 @@
 
 (: set-frozen-scene-shape-color (-> shape FlV4 frozen-scene-shape))
 (define (set-frozen-scene-shape-color s c)
-  (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
+  (let ([s : Scene (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
     (define new-s (scene-map-shapes s (λ ([s : shape]) (set-shape-color s c))))
     (make-frozen-scene-shape/transformed (assert new-s nonempty-scene?))))
 
 (: set-frozen-scene-shape-emitted (-> shape FlV4 frozen-scene-shape))
 (define (set-frozen-scene-shape-emitted s e)
-  (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
+  (let ([s : Scene (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
     (define new-s (scene-map-shapes s (λ ([s : shape]) (set-shape-emitted s e))))
     (make-frozen-scene-shape/transformed (assert new-s nonempty-scene?))))
 
 (: set-frozen-scene-shape-material (-> shape FlV4 frozen-scene-shape))
 (define (set-frozen-scene-shape-material s m)
-  (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
+  (let ([s : Scene (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
     (define new-s (scene-map-shapes s (λ ([s : shape]) (set-shape-material s m))))
     (make-frozen-scene-shape/transformed (assert new-s nonempty-scene?))))
 
@@ -61,7 +61,7 @@
 
 (: get-frozen-scene-shape-passes (-> shape passes))
 (define (get-frozen-scene-shape-passes s)
-  (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
+  (let ([s : Scene (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
     (merge-passes
      (append* (scene-extract s empty (λ ([s : shape] [t : FlAffine3])
                                        (map shape-passes (shape-deep-transform s t))))))))
@@ -89,7 +89,7 @@
 
 (: frozen-scene-shape-deep-transform (-> shape FlAffine3 (Listof shape)))
 (define (frozen-scene-shape-deep-transform s t)  
-  (let ([s  (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
+  (let ([s : Scene (frozen-scene-shape-scene (assert s frozen-scene-shape?))])
     (append* (scene-extract (scene-deep-transform s t) empty shape-deep-transform))))
 
 ;; ===================================================================================================

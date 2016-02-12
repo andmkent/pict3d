@@ -122,7 +122,8 @@
   (list->vector
    (append*
     (for*/list : (Listof (Listof shape-params))
-      ([ks  (in-list (group-by-key! ps 0 (vector-length ps) shape-params-program))]
+      ([ks  (in-list ((inst group-by-key! shape-params (-> gl-program))
+                      ps 0 (ann (vector-length ps) Nonnegative-Fixnum) shape-params-program))]
        [program  (in-value ((car ks)))]
        [s   (in-value (cdr ks))]
        [ks  (in-list (group-by-key! ps (span-start s) (span-end s) shape-params-uniforms))]
