@@ -3,6 +3,7 @@
 (require racket/unsafe/ops
          racket/list
          racket/vector
+         typed/safe/ops
          (except-in typed/opengl/ffi -> cast)
          "../../gl.rkt"
          "../../utils.rkt"
@@ -11,6 +12,8 @@
 
 (provide merge-passes)
 
+;; <hard> Adding a refinement type here would require information about
+;; the cdr of a complicated in-list list.
 (: get-counts (-> (Vectorof shape-params)
                   Nonnegative-Fixnum
                   Nonnegative-Fixnum
@@ -22,7 +25,7 @@
     (define v (shape-params-vertices (unsafe-vector-ref ps i)))
     (values (unsafe-fx+ vertex-count (vertices-vertex-count v))
             (unsafe-fx+ index-count (vector-length (vertices-indexes v))))))
-
+;; <hard> same reason as get-counts
 (: merge-data (-> gl-program
                   (Vectorof shape-params)
                   Nonnegative-Fixnum
@@ -55,33 +58,41 @@
       (define vertex-indexes ((inst make-vector Index) old-vertex-count 0))
       ;; Copy the vertex data while merging vertexes
       (define vertex-count
-        (for/fold ([vertex-count : Nonnegative-Fixnum  0])
-                  ([j  (in-range old-vertex-count)])
-          (define bs-start (unsafe-fx* j struct-size))
-          (define bs (subbytes vertex-data bs-start (unsafe-fx+ bs-start struct-size)))
-          (define new-j (hash-ref vertex-hash bs #f))
+        (let loop : Nonnegative-Fixnum ([vertex-count : Nonnegative-Fixnum  0]
+                                        [j : Natural 0])
           (cond
-            [(not new-j)
-             (define new-j (assert (unsafe-fx+ vertex-num vertex-count) index?))
-             (hash-set! vertex-hash bs new-j)
-             (vector-set! vertex-indexes j new-j)
-             (memcpy all-vertex-data-ptr
-                     (unsafe-fx* new-j struct-size)
-                     (u8vector->cpointer vertex-data)
-                     (unsafe-fx* j struct-size)
-                     struct-size
-                     _byte)
-             (unsafe-fx+ vertex-count 1)]
-            [else
-             (vector-set! vertex-indexes j new-j)
-             vertex-count])))
+            [( < j old-vertex-count)
+             (define bs-start (unsafe-fx* j struct-size))
+             (define bs (subbytes vertex-data bs-start (unsafe-fx+ bs-start struct-size)))
+             (define new-j (hash-ref vertex-hash bs #f))
+             (cond
+               [(not new-j)
+                (define new-j (assert (unsafe-fx+ vertex-num vertex-count) index?))
+                (hash-set! vertex-hash bs new-j)
+                (safe-vector-set! vertex-indexes j new-j)
+                (memcpy all-vertex-data-ptr
+                        (unsafe-fx* new-j struct-size)
+                        (u8vector->cpointer vertex-data)
+                        (unsafe-fx* j struct-size)
+                        struct-size
+                        _byte)
+                (loop (unsafe-fx+ vertex-count 1) (add1 j))]
+               [else
+                (safe-vector-set! vertex-indexes j new-j)
+                (loop vertex-count (add1 j))])]
+            [else vertex-count]))) 
       
       ;; Copy the indexes
-      (for ([k  (in-range index-count)])
-        (define j (unsafe-vector-ref indexes k))
-        (vector-set! all-indexes
-                     (unsafe-fx+ index-num k)
-                     (vector-ref vertex-indexes j)))
+      ;; <rewrite> minor rewrite fixes k
+      (let loop ([k : Natural 0])
+        (cond
+          [(< k index-count)
+              (define j (safe-vector-ref indexes k))
+              (vector-set! all-indexes
+                           (unsafe-fx+ index-num k)
+                           ;; <hard> need info about indexes inrelation to vertex-indexes
+                           (vector-ref vertex-indexes j))
+              (loop (add1 k))]))
       
       (values (unsafe-fx+ vertex-num vertex-count)
               (unsafe-fx+ index-num index-count))))

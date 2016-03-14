@@ -5,6 +5,7 @@
          racket/vector
          racket/match
          racket/promise
+         typed/safe/ops
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
@@ -249,9 +250,9 @@
   (let loop ([i : Positive-Fixnum  1])
     (cond
       [(< i n)
-       (define-values (vtxi di ci?) (fls3apply/vtx t (unsafe-vector-ref vtxs i)))
+       (define-values (vtxi di ci?) (fls3apply/vtx t (safe-vector-ref vtxs i)))
        (cond [(eq? c0? ci?)
-              (unsafe-vector-set! new-vtxs i (if ci? vtxi (vtx-flip-normal vtxi)))
+              (safe-vector-set! new-vtxs i (if ci? vtxi (vtx-flip-normal vtxi)))
               (loop (+ i 1))]
              [else
               (triangle-mesh-shape-deform (quad-shape-mesh (assert s quad-shape?)) t)])]

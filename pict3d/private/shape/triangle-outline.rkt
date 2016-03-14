@@ -3,6 +3,7 @@
 (require racket/list
          racket/vector
          racket/match
+         typed/safe/ops
          typed/opengl
          "../math.rkt"
          "../memo.rkt"
@@ -273,44 +274,57 @@ code
 (define (get-triangle-outline-shape-passes s)
   (match-define (triangle-outline-shape _ _ vtxs corners edges width back?) s)
   (define n (vector-length vtxs))
-  
+
   (define bits
-    (bitwise-ior (if (vector-ref edges 0) 4 0)
-                 (if (vector-ref edges 1) 8 0)
-                 (if (vector-ref edges 2) 16 0)
-                 (if (vector-ref corners 0) 32 0)
-                 (if (vector-ref corners 1) 64 0)
-                 (if (vector-ref corners 2) 128 0)))
+    (cond
+      [(and (= 3 (vector-length corners)) (= 3 (vector-length edges)))
+       (bitwise-ior (if (safe-vector-ref edges 0) 4 0)
+                    (if (safe-vector-ref edges 1) 8 0)
+                    (if (safe-vector-ref edges 2) 16 0)
+                    (if (safe-vector-ref corners 0) 32 0)
+                    (if (safe-vector-ref corners 1) 64 0)
+                    (if (safe-vector-ref corners 2) 128 0))]
+      [else (error 'corner-edge-length)]))
   
   (define mat-struct-size (program-code-vao-size polygon-mat-program-code))
   (define mat-data (make-bytes (* n mat-struct-size)))
-  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range n)])
-    (define vert (vector-ref vtxs j))
-    (define v (vtx-position vert))
-    (define n (vtx-normal vert))
-    (define m (vtx-material vert))
-    (let* ([i  (serialize-vec3 mat-data i v)]
-           [i  (serialize-float mat-data i width)]
-           [i  (serialize-normal/bytes mat-data i n back?)]
-           [i  (serialize-float/byte mat-data i (unsafe-flv4-ref m 3))]
-           [i  (serialize-bytes mat-data i (bytes j 0 0 0) 4)])
-      i))
+  (let loop : Nonnegative-Fixnum
+    ([i : Nonnegative-Fixnum  0]
+     [j : Natural 0])
+    (cond
+      [(< j n)
+       (define vert (safe-vector-ref vtxs j))
+       (define v (vtx-position vert))
+       (define n (vtx-normal vert))
+       (define m (vtx-material vert))
+       (let* ([i  (serialize-vec3 mat-data i v)]
+              [i  (serialize-float mat-data i width)]
+              [i  (serialize-normal/bytes mat-data i n back?)]
+              [i  (serialize-float/byte mat-data i (unsafe-flv4-ref m 3))]
+              [i  (serialize-bytes mat-data i (bytes j 0 0 0) 4)])
+         (loop i (add1 j)))]
+      [else i]))
   
   (define opaq-struct-size (program-code-vao-size polygon-tran-program-code))
   (define draw-data (make-bytes (* n opaq-struct-size)))
-  (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range n)])
-    (define vert (vector-ref vtxs j))
-    (define v (vtx-position vert))
-    (define c (vtx-color vert))
-    (define e (vtx-emitted vert))
-    (define m (vtx-material vert))
-    (let* ([i  (serialize-vec3 draw-data i v)]
-           [i  (serialize-float draw-data i width)]
-           [i  (serialize-vec4/bytes draw-data i c)]
-           [i  (serialize-emitted/bytes draw-data i e)]
-           [i  (serialize-material-reflectances/bytes draw-data i m)]
-           [i  (serialize-byte draw-data i (bitwise-ior j bits))])
-      i))
+  (let loop : Nonnegative-Fixnum
+    ([i : Nonnegative-Fixnum  0]
+     [j : Natural 0])
+    (cond
+      [(< j n)
+       (define vert (safe-vector-ref vtxs j))
+       (define v (vtx-position vert))
+       (define c (vtx-color vert))
+       (define e (vtx-emitted vert))
+       (define m (vtx-material vert))
+       (let* ([i  (serialize-vec3 draw-data i v)]
+              [i  (serialize-float draw-data i width)]
+              [i  (serialize-vec4/bytes draw-data i c)]
+              [i  (serialize-emitted/bytes draw-data i e)]
+              [i  (serialize-material-reflectances/bytes draw-data i m)]
+              [i  (serialize-byte draw-data i (bitwise-ior j bits))])
+         (loop i (add1 j)))]
+      [else i]))
   
   (define idxs (if back? (vector-reverse triangle-idxs) triangle-idxs))
   
@@ -327,10 +341,13 @@ code
 (: get-triangle-outline-shape-bbox (-> shape FlAffine3 bbox))
 (define (get-triangle-outline-shape-bbox s t)
   (match-define (triangle-outline-shape _ _ vtxs corners edges width back?) s)
-  (bbox (flrect3 (vtx-position (vector-ref vtxs 0))
-                 (vtx-position (vector-ref vtxs 1))
-                 (vtx-position (vector-ref vtxs 2)))
-        0.0))
+  (cond
+    [(= 3 (vector-length vtxs))
+     (bbox (flrect3 (vtx-position (safe-vector-ref vtxs 0))
+                    (vtx-position (safe-vector-ref vtxs 1))
+                    (vtx-position (safe-vector-ref vtxs 2)))
+           0.0)]
+    [else (error 'triangle-vector-length)]))
 
 ;; ===================================================================================================
 ;; Transform
@@ -368,14 +385,21 @@ code
   (define new-vtxs (vector new-vtx1 new-vtx2 new-vtx3))
   (define-values (test-vtx2 d2 c2?) (fls3apply/vtx t vtx2))
   (define flipped? (not (equal? new-vtx2 test-vtx2)))
-  (define new-corners
-    (cond [flipped?  (vector (vector-ref corners 0) (vector-ref corners 2) (vector-ref corners 1))]
-          [else  corners]))
-  (define new-edges
-    (cond [flipped?  (vector (vector-ref edges 2) (vector-ref edges 1) (vector-ref edges 0))]
-          [else  edges]))
-  (list (triangle-outline-shape (lazy-passes) triangle-outline-shape-functions
-                                new-vtxs new-corners new-edges width #f)))
+  (cond
+    [(and (= 3 (vector-length corners)) (= 3 (vector-length edges)))
+     (define new-corners 
+       (cond [flipped?  (vector (safe-vector-ref corners 0)
+                                (safe-vector-ref corners 2)
+                                (safe-vector-ref corners 1))]
+             [else  corners]))
+     (define new-edges 
+       (cond [flipped?  (vector (safe-vector-ref edges 2)
+                                (safe-vector-ref edges 1)
+                                (safe-vector-ref edges 0))]
+             [else  edges]))
+     (list (triangle-outline-shape (lazy-passes) triangle-outline-shape-functions
+                                   new-vtxs new-corners new-edges width #f))]
+    [else (error 'edge-corner-length)]))
 
 ;; ===================================================================================================
 

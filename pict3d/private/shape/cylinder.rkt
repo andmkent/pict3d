@@ -5,6 +5,7 @@
          racket/list
          racket/promise
          typed/opengl
+         typed/safe/ops
          (except-in typed/opengl/ffi -> cast)
          math/flonum
          math/base
@@ -793,34 +794,42 @@ Rectangle indexes
        (define n1 (vector-length vtxs1))
        (define n2 (vector-length vtxs2))
        (append*
-        (for/list : (Listof (Listof (face deform-data #f))) ([i11  (in-range (- n1 1))]
-                                                             [i12  (in-range 1 n1)])
-          (define i21 (max 0 (min (- n2 1) (exact-round (* (/ n2 n1) i11)))))
-          (define i22 (max 0 (min (- n2 1) (exact-round (* (/ n2 n1) i12)))))
+        (let loop : (Listof (Listof (face deform-data #f)))
+          ([als : (Listof (Listof (face deform-data #f))) null]
+           [i11 : Natural 0]
+           [i12 : Natural 1])
           (cond
-            [(= i22 i21)
-             (define vtx11 (vector-ref vtxs1 i11))
-             (define vtx12 (vector-ref vtxs1 i12))
-             (define vtx21 (vector-ref vtxs2 i21))
-             (make-triangle-face vtx11 vtx21 vtx12 data #f #f #f reverse?)]
-            [(= i22 (+ i21 1))
-             (define vtx11 (vector-ref vtxs1 i11))
-             (define vtx12 (vector-ref vtxs1 i12))
-             (define vtx21 (vector-ref vtxs2 i21))
-             (define vtx22 (vector-ref vtxs2 i22))
-             (make-quad-faces vtx11 vtx21 vtx22 vtx12 data #f #f #f #f #f #f t0 reverse?)]
-            [(= i22 (+ i21 2))
-             (define vtx11 (vector-ref vtxs1 i11))
-             (define vtx12 (vector-ref vtxs1 i12))
-             (define vtx21 (vector-ref vtxs2 i21))
-             (define vtx22 (vector-ref vtxs2 (+ i21 1)))
-             (define vtx23 (vector-ref vtxs2 i22))
-             (append (make-triangle-face vtx11 vtx21 vtx22 data #f #f #f reverse?)
-                     (make-triangle-face vtx11 vtx22 vtx12 data #f #f #f reverse?)
-                     (make-triangle-face vtx12 vtx22 vtx23 data #f #f #f reverse?))]
-            [else
-             ;; Never been able to make this happen - might be impossible
-             empty]))))))
+            [(and (< i11 (- n1 1)) (< i12 n1))
+             (define i21 (max 0 (min (- n2 1) (exact-round (* (/ n2 n1) i11)))))
+             (define i22 (max 0 (min (- n2 1) (exact-round (* (/ n2 n1) i12)))))
+             (cond
+               [(= i22 i21)
+                (define vtx11 (safe-vector-ref vtxs1 i11))
+                (define vtx12 (safe-vector-ref vtxs1 i12))
+                (define vtx21 (vector-ref vtxs2 i21))
+                (loop (cons (make-triangle-face vtx11 vtx21 vtx12 data #f #f #f reverse?) als)
+                      i11 i12)]
+               [(= i22 (+ i21 1))
+                (define vtx11 (safe-vector-ref vtxs1 i11))
+                (define vtx12 (safe-vector-ref vtxs1 i12))
+                (define vtx21 (vector-ref vtxs2 i21))
+                (define vtx22 (vector-ref vtxs2 i22))
+                (loop (cons (make-quad-faces vtx11 vtx21 vtx22 vtx12 data #f #f #f #f #f #f t0 reverse?) als)
+                      i11 i12)]
+               [(= i22 (+ i21 2))
+                (define vtx11 (safe-vector-ref vtxs1 i11))
+                (define vtx12 (safe-vector-ref vtxs1 i12))
+                (define vtx21 (vector-ref vtxs2 i21))
+                (define vtx22 (vector-ref vtxs2 (+ i21 1)))
+                (define vtx23 (vector-ref vtxs2 i22))
+                (loop (cons (append (make-triangle-face vtx11 vtx21 vtx22 data #f #f #f reverse?)
+                                    (make-triangle-face vtx11 vtx22 vtx12 data #f #f #f reverse?)
+                                    (make-triangle-face vtx12 vtx22 vtx23 data #f #f #f reverse?))
+                            als) i11 i12)]
+               [else
+                ;; Never been able to make this happen - might be impossible
+                (loop als i11 i12)])]
+            [else als]))))))
   
   (values empty fs))
 

@@ -5,6 +5,7 @@
          racket/vector
          racket/flonum
          racket/unsafe/ops
+         typed/safe/ops
          "untyped-utils.rkt")
 
 (provide (all-defined-out)
@@ -118,7 +119,7 @@
                (vector-copy xs i1 i2)]
               [(or (eq? equal 'full) (i1 . > . i2))
                (define m1 (- n i1))
-               (define ys ((inst make-vector A) (+ i2 m1) (vector-ref xs 0)))
+               (define ys ((inst make-vector A) (+ i2 m1) (safe-vector-ref xs 0)))
                (vector-copy! ys 0 xs i1 n)
                (vector-copy! ys m1 xs 0 i2)
                ys]
@@ -256,11 +257,13 @@
   (define n (vector-length vs))
   (cond [(= n 0)  #()]
         [else
-         (define new-vs (make-vector n (f (vector-ref vs 0))))
-         (define n-1 (- n 1))
-         (for ([i  (in-range 0 n-1)]
-               [j  (in-range n-1 0 -1)])
-           (vector-set! new-vs i (f (vector-ref vs j))))
+         (define new-vs (make-vector n (f (safe-vector-ref vs 0))))
+         (let loop ([i : Natural 0]
+                    [j : (Refine [j : Fixnum] (< j n)) (- n 1)])
+           (cond
+             [(and (< i n) (<= 0 j))
+              (safe-vector-set! new-vs i (f (safe-vector-ref vs j)))
+              (loop (add1 i) (- j 1))]))
          new-vs]))
 
 (: vector-reverse (All (A) (-> (Vectorof A) (Vectorof A))))
@@ -309,26 +312,33 @@
                  ([xs  (in-list xss)]
                   [idxs  (in-list idxss)])
          ;; Copy the x values
-         (for/fold ([n : Nonnegative-Fixnum  n]
-                    [m : Nonnegative-Fixnum  m])
-                   ([i  (in-range (vector-length idxs))])
-           ;; Look up x by its index j
-           (define j (unsafe-vector-ref idxs i))
-           (define x (vector-ref xs j))
-           ;; Determine whether we've seen it before
-           (define new-j (hash-ref x-hash x #f))
-           (cond [(not new-j)
-                  ;; If not, get a new index new-j and record it
-                  (define new-j (assert n index?))
-                  (hash-set! x-hash x new-j)
-                  ;; Copy x and its index
-                  (unsafe-vector-set! all-xs new-j x)
-                  (unsafe-vector-set! all-idxs m new-j)
-                  (values (unsafe-fx+ n 1) (unsafe-fx+ m 1))]
-                 [else
-                  ;; If we've seen it before, just set the index
-                  (unsafe-vector-set! all-idxs m new-j)
-                  (values n (unsafe-fx+ m 1))]))))
+         (let loop ([n : Nonnegative-Fixnum  n]
+                    [m : Nonnegative-Fixnum  m]
+                    [i : Natural 0])
+           (cond
+             [(< i (vector-length idxs))
+              ;; Look up x by its index j
+              (define j (safe-vector-ref idxs i))
+              (define x (vector-ref xs j))
+              ;; Determine whether we've seen it before
+              (define new-j (hash-ref x-hash x #f))
+              (cond [(not new-j)
+                     ;; If not, get a new index new-j and record it
+                     (define new-j (assert n index?))
+                     (hash-set! x-hash x new-j)
+                     ;; Copy x and its index
+                     (unsafe-vector-set! all-xs new-j x)
+                     (unsafe-vector-set! all-idxs m new-j)
+                     (loop (unsafe-fx+ n 1)
+                           (unsafe-fx+ m 1)
+                           (add1 i))]
+                    [else
+                     ;; If we've seen it before, just set the index
+                     (unsafe-vector-set! all-idxs m new-j)
+                     (loop n
+                           (unsafe-fx+ m 1)
+                           (add1 i))])]
+             [else (values n m)]))))
      ;; Keep only the xs we need
      (values (if (= n new-n) all-xs (vector-copy all-xs 0 new-n))
              all-idxs)]))

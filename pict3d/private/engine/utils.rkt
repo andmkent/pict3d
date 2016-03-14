@@ -2,6 +2,7 @@
 
 (require racket/list
          racket/unsafe/ops
+         typed/safe/ops
          math/base
          math/flonum
          (except-in typed/opengl/ffi cast ->)
@@ -153,6 +154,78 @@
    vector-length))
 
 (define no-key (gensym 'no-key))
+
+(: safe-group-by-key! (All (A K)
+                           (~> ([xs : (Refine [xs : (Vectorof A)]
+                                              (< start end (len xs)))]
+                                [start : Nonnegative-Fixnum]
+                                [end : Nonnegative-Fixnum]
+                                [key : (-> A K)])
+                               (Listof (Pair K span)))))
+(define (safe-group-by-key! xs start end key)
+  (: spans (HashTable Any span))
+  (define spans (make-hasheq))
+  
+  (define span-vec (get-span-vector (vector-length xs)))
+  
+  (: kss (Listof (Pair K span)))
+  (define-values (kss _last-key _last-span)
+    (let loop : (values (Listof (Pair K span)) Any span)
+      ([kss : (Listof (Pair K span))  empty]
+       [last-key : Any  no-key]
+       [last-span : span  (span 0 0 0)]
+       [i : Natural start])
+      (cond
+        [( < i end)
+         (define x (safe-vector-ref xs i))
+         (define k (key x))
+         (define s (if (eq? k last-key)
+                       last-span
+                       (hash-ref spans k #f)))
+         (cond [s  (set-span-end! s (unsafe-fx+ 1 (span-end s)))
+                   (unsafe-vector-set! span-vec i s)
+                   (loop kss k s (add1 i))]
+               [else  (define s (span 0 1 0))
+                      (hash-set! spans k s)
+                      (unsafe-vector-set! span-vec i s)
+                      (loop (cons (cons k s) kss) k s (add1 i))])]
+        [else (values kss last-key last-span)])))
+  
+  (cond
+    [(empty? kss)  empty]
+    [(empty? (rest kss))
+     (define s (cdr (first kss)))
+     (set-span-start! s start)
+     (set-span-end! s end)
+     kss]
+    [else
+     (set! kss (reverse kss))
+     (for/fold ([n : Nonnegative-Fixnum  start]) ([ks  (in-list kss)])
+       (define s (cdr ks))
+       (define len (span-end s))
+       (define next-n (unsafe-fx+ n len))
+       (set-span-start! s n)
+       (set-span-current! s n)
+       (set-span-end! s next-n)
+       next-n)
+     
+     (let loop ([i start])
+       (when (< i end)
+         (define s (unsafe-vector-ref span-vec i))
+         (cond [(and (<= (span-start s) i) (< i (span-end s)))
+                (loop (unsafe-fx+ i 1))]
+               [else
+                (define x (unsafe-vector-ref xs i))
+                (define n (span-current s))
+                (define xtmp (unsafe-vector-ref xs n))
+                (unsafe-vector-set! xs n x)
+                (unsafe-vector-set! xs i xtmp)
+                (define stmp (unsafe-vector-ref span-vec n))
+                (unsafe-vector-set! span-vec n s)
+                (unsafe-vector-set! span-vec i stmp)
+                (set-span-current! s (unsafe-fx+ n 1))
+                (loop i)])))
+     kss]))
 
 (: group-by-key! (All (A K) (-> (Vectorof A)
                                 Nonnegative-Fixnum

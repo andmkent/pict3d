@@ -2,6 +2,7 @@
 
 (require racket/match
          racket/unsafe/ops
+         typed/safe/ops
          math/flonum
          "flv3.rkt"
          "flt3.rkt"

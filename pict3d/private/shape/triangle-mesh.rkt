@@ -5,6 +5,7 @@
          racket/vector
          racket/match
          racket/promise
+         typed/safe/ops
          typed/opengl
          (except-in typed/opengl/ffi -> cast)
          math/flonum
@@ -51,11 +52,14 @@
     (raise-argument-error 'make-triangle-mesh-shape
                           "(Vectorof Index) with positive, multiple-of-3 length"
                           1 vtxs faces back?))
-  (for ([i  (in-range m)])
-    (unless (< (vector-ref faces i) n)
-      (raise-argument-error 'make-triangle-mesh-shape
-                            (format "(Vectorof Index) with all indexes < ~a" n)
-                            1 vtxs faces back?)))
+  (let loop ([i : Natural 0])
+    (cond
+      [(< i m)
+       (unless (< (safe-vector-ref faces i) n)
+         (raise-argument-error 'make-triangle-mesh-shape
+                               (format "(Vectorof Index) with all indexes < ~a" n)
+                               1 vtxs faces back?))
+       (loop (add1 i))]))
   (triangle-mesh-shape (lazy-passes) triangle-mesh-shape-functions vtxs faces back?))
 
 (: triangle-indexes (Vectorof Index))
@@ -277,7 +281,7 @@ code
   (define mat-struct-size (program-code-vao-size polygon-mat-program-code))
   (define mat-data (make-bytes (* n mat-struct-size)))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range n)])
-    (define vert (vector-ref vtxs j))
+    (define vert (safe-vector-ref vtxs j))
     (define v (vtx-position vert))
     (define n (vtx-normal vert))
     (define m (vtx-material vert))
@@ -294,7 +298,7 @@ code
   (define opaq-struct-size (program-code-vao-size polygon-opaq-program-code))
   (define draw-data (make-bytes (* n opaq-struct-size)))
   (for/fold ([i : Nonnegative-Fixnum  0]) ([j  (in-range n)])
-    (define vert (vector-ref vtxs j))
+    (define vert (safe-vector-ref vtxs j))
     (define v (vtx-position vert))
     (define c (cond [debug?  (call/flv4-values (vtx-color vert)
                                (λ (r g b a)
@@ -310,7 +314,7 @@ code
   
   (define transparent?
     (for/or : Boolean ([i  (in-range n)])
-      (< (flv4-ref (vtx-color (vector-ref vtxs i)) 3) 1.0)))
+      (< (flv4-ref (vtx-color (safe-vector-ref vtxs i)) 3) 1.0)))
   
   (define js (if back? (vector-reverse faces) faces))
   
@@ -419,19 +423,23 @@ code
     (define idxs (triangle-mesh-shape-idxs s))
     (define back? (triangle-mesh-shape-back? s))
     (define-values (time v1 v2 v3)
-      (for/fold ([best-time : (U #f Nonnegative-Flonum)  #f]
-                 [best-v1 : FlV3  zero-flv3]
-                 [best-v2 : FlV3  zero-flv3]
-                 [best-v3 : FlV3  zero-flv3])
-                ([i  (in-range 0 (vector-length idxs) 3)])
-        (define v1 (vtx-position (vector-ref vtxs (vector-ref idxs i))))
-        (define v2 (vtx-position (vector-ref vtxs (vector-ref idxs (+ i 1)))))
-        (define v3 (vtx-position (vector-ref vtxs (vector-ref idxs (+ i 2)))))
-        (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
-          (define time (triangle-intersect-time v1 v2 v3 o d))
-          (if (and time (>= time 0.0) (<= time max-time) (or (not best-time) (< time best-time)))
-              (values time v1 v2 v3)
-              (values best-time best-v1 best-v2 best-v3)))))
+      (let loop : (values (U #f Nonnegative-Flonum) FlV3 FlV3 FlV3)
+        ([best-time : (U #f Nonnegative-Flonum)  #f]
+         [best-v1 : FlV3  zero-flv3]
+         [best-v2 : FlV3  zero-flv3]
+         [best-v3 : FlV3  zero-flv3]
+         [i : Natural 0])
+        (cond
+          [(< i (- (vector-length idxs) 2))
+              (define v1 (vtx-position (vector-ref vtxs (safe-vector-ref idxs i))))
+              (define v2 (vtx-position (vector-ref vtxs (safe-vector-ref idxs (+ i 1)))))
+              (define v3 (vtx-position (vector-ref vtxs (safe-vector-ref idxs (+ i 2)))))
+              (let-values ([(v1 v2)  (if back? (values v2 v1) (values v1 v2))])
+                (define time (triangle-intersect-time v1 v2 v3 o d))
+                (if (and time (>= time 0.0) (<= time max-time) (or (not best-time) (< time best-time)))
+                    (loop time v1 v2 v3 (+ i 3))
+                    (loop best-time best-v1 best-v2 best-v3 (+ i 3))))]
+          [else (values best-time best-v1 best-v2 best-v3)])))
     (cond [time
            (define data
              (delay (define p (flv3fma d time o))
@@ -450,9 +458,9 @@ code
 (define (triangle-mesh-shape-extract-faces s)
   (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
   (values empty (mesh->faces (if back? (vector-map vtx-flip-normal vtxs) vtxs)
-                             (if back? (vector-reverse idxs) idxs)
-                             linear-deform-data
-                             #f)))
+                                  (if back? (vector-reverse idxs) idxs)
+                                  linear-deform-data
+                                  #f)))
 
 (: tessellate-face (-> (face deform-data #f) FlAffine3 Positive-Flonum
                        (Listof (face deform-data #f))))
@@ -603,9 +611,9 @@ code
           (append*
            (map (λ ([f : (face deform-data #f)]) (tessellate-face f t max-edge))
                 (mesh->faces (if back? (vector-map vtx-flip-normal vtxs) vtxs)
-                             (if back? (vector-reverse idxs) idxs)
-                             linear-deform-data
-                             #f)))))
+                                  (if back? (vector-reverse idxs) idxs)
+                                  linear-deform-data
+                                  #f)))))
 
 ;; ===================================================================================================
 ;; Warp
@@ -627,9 +635,9 @@ code
   (let loop ([i : Positive-Fixnum  1])
     (cond
       [(< i n)
-       (define-values (vtxi di ci?) (fls3apply/vtx t (unsafe-vector-ref vtxs i)))
+       (define-values (vtxi di ci?) (fls3apply/vtx t (safe-vector-ref vtxs i)))
        (cond [(eq? ci? c0?)
-              (unsafe-vector-set! new-vtxs i (if ci? vtxi (vtx-flip-normal vtxi)))
+              (safe-vector-set! new-vtxs i (if ci? vtxi (vtx-flip-normal vtxi)))
               (loop (+ i 1))]
              [else
               (define new-idxs (if back? (vector-reverse idxs) idxs))

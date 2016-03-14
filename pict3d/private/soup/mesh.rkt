@@ -2,6 +2,7 @@
 
 (require racket/match
          racket/list
+         typed/safe/ops
          "../utils.rkt"
          "types.rkt")
 
@@ -9,11 +10,17 @@
 
 (: mesh->faces (All (A B) (-> (Vectorof vtx) (Vectorof Index) A B (Listof (face A B)))))
 (define (mesh->faces vtxs idxs data edge-data)
-  (for/list : (Listof (face A B)) ([i  (in-range 0 (vector-length idxs) 3)])
-    (define vtx1 (vector-ref vtxs (vector-ref idxs i)))
-    (define vtx2 (vector-ref vtxs (vector-ref idxs (+ i 1))))
-    (define vtx3 (vector-ref vtxs (vector-ref idxs (+ i 2))))
-    (face vtx1 vtx2 vtx3 data edge-data edge-data edge-data)))
+  (let loop : (Listof (face A B))
+    ([als : (Listof (face A B)) null]
+     [i : Natural 0])
+    (cond
+      [(< i (- (vector-length idxs) 2))
+       (define vtx1 (vector-ref vtxs (safe-vector-ref idxs i)))
+       (define vtx2 (vector-ref vtxs (safe-vector-ref idxs (+ i 1))))
+       (define vtx3 (vector-ref vtxs (safe-vector-ref idxs (+ i 2))))
+       (loop (cons (face vtx1 vtx2 vtx3 data edge-data edge-data edge-data) als)
+             (+ i 3))]
+      [else (reverse als)])))
 
 (: faces->mesh (All (A B) (-> (Listof (face A B)) (Values (Vectorof vtx) (Vectorof Index)))))
 (define (faces->mesh faces)

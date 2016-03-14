@@ -5,6 +5,7 @@
          racket/fixnum
          racket/match
          racket/promise
+         typed/safe/ops
          math/flonum
          math/base
          "../math.rkt"
@@ -1587,9 +1588,24 @@
             [(triangle-mesh-shape? s)
              (match-define (triangle-mesh-shape _ _ vtxs idxs back?) s)
              (scene-union*
+              (let loop ([ss : (Listof Scene)  empty]
+                        [i : Natural 0])
+                (cond
+                  [(< i (- (vector-length idxs) 2))
+                   (match-define (vtx v1 n1 _ _ _) (vector-ref vtxs (safe-vector-ref idxs i)))
+                   (match-define (vtx v2 n2 _ _ _) (vector-ref vtxs (safe-vector-ref idxs (+ i 1))))
+                   (match-define (vtx v3 n3 _ _ _) (vector-ref vtxs (safe-vector-ref idxs (+ i 2))))
+                   (define vtx1 (vtx v1 n1 cc ce cm))
+                   (define vtx2 (vtx v2 n2 cc ce cm))
+                   (define vtx3 (vtx v3 n3 cc ce cm))
+                   (loop (cons (make-triangle-outline-shape (vector vtx1 vtx2 vtx3)
+                                                            outline-trues outline-trues 1.5 back?)
+                               ss)
+                         (+ i 3))]
+                  [else ss]))#;
               (for/fold ([ss : (Listof Scene)  empty])
                         ([i  (in-range 0 (vector-length idxs) 3)])
-                (match-define (vtx v1 n1 _ _ _) (vector-ref vtxs (vector-ref idxs i)))
+                (match-define (vtx v1 n1 _ _ _) (vector-ref vtxs (safe-vector-ref idxs i)))
                 (match-define (vtx v2 n2 _ _ _) (vector-ref vtxs (vector-ref idxs (+ i 1))))
                 (match-define (vtx v3 n3 _ _ _) (vector-ref vtxs (vector-ref idxs (+ i 2))))
                 (define vtx1 (vtx v1 n1 cc ce cm))
