@@ -153,20 +153,6 @@
      (make-u16vector n))
    u16vector-length))
 
-(: safe-get-vertex-count (~> ([ps : (Refine [ps : (Vectorof draw-params)]
-                                            (< start end (len ps)))]
-                              [start : Nonnegative-Fixnum]
-                              [end : Nonnegative-Fixnum])
-                             Nonnegative-Fixnum))
-(define (safe-get-vertex-count ps start end)
-  (let loop ([vertex-count : Nonnegative-Fixnum  0]
-             [i : Natural start])
-    (cond
-      [(< i end)
-       (define v (shape-params-vertices (draw-params-shape-params (safe-vector-ref ps i))))
-       (loop (unsafe-fx+ vertex-count (vertices-vertex-count v)) (add1 i))]
-      [else vertex-count])))
-
 (: get-vertex-count (-> (Vectorof draw-params)
                         Nonnegative-Fixnum
                         Nonnegative-Fixnum 
@@ -180,20 +166,6 @@
        (loop (unsafe-fx+ vertex-count (vertices-vertex-count v)) (add1 i))]
       [else vertex-count])))
 
-(: safe-get-index-count (~> ([ps : (Refine [ps : (Vectorof draw-params)]
-                                            (< start end (len ps)))]
-                              [start : Nonnegative-Fixnum]
-                              [end : Nonnegative-Fixnum])
-                             Nonnegative-Fixnum))
-(define (safe-get-index-count ps start end)
-  (let loop ([index-count : Nonnegative-Fixnum  0]
-             [i : Natural start])
-    (cond
-      [(< i end)
-       (define v (shape-params-vertices (draw-params-shape-params (safe-vector-ref ps i))))
-       (loop (unsafe-fx+ index-count (vector-length (vertices-indexes v))) (add1 i))]
-      [else index-count])))
-
 (: get-index-count (-> (Vectorof draw-params)
                        Nonnegative-Fixnum
                        Nonnegative-Fixnum 
@@ -206,39 +178,6 @@
        (define v (shape-params-vertices (draw-params-shape-params (unsafe-vector-ref ps i))))
        (loop (unsafe-fx+ index-count (vector-length (vertices-indexes v))) (add1 i))]
       [else index-count])))
-
-(: safe-send-vertex-data (~> ([vbuf : gl-array-buffer]
-                              [program : gl-program]
-                              [ps : (Refine [ps : (Vectorof draw-params)]
-                                            (< start end (len ps)))]
-                              [start : Nonnegative-Fixnum]
-                              [end : Nonnegative-Fixnum]
-                              [vertex-count : Nonnegative-Fixnum])
-                             Any))
-(define (safe-send-vertex-data vbuf program ps start end vertex-count)
-  (gl-bind-array-buffer vbuf)
-  ;; Map the vertex buffer into memory
-  (define struct-size (vao-struct-size (gl-program-struct program)))
-  (define buffer-size (unsafe-fx* struct-size vertex-count))
-  (define all-vertex-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-  ;; Copy the vertex data into the buffer
-  (let loop ([vertex-num : Nonnegative-Fixnum  0]
-            [i : Natural start])
-    (cond
-      [(< i end)
-       (define v (shape-params-vertices (draw-params-shape-params (safe-vector-ref ps i))))
-       (define vertex-count (vertices-vertex-count v))
-       (define vertex-data (vertices-vertex-data v))
-       (memcpy all-vertex-data-ptr
-               (unsafe-fx* vertex-num struct-size)
-               (u8vector->cpointer vertex-data)
-               (unsafe-fx* vertex-count struct-size)
-               _byte)
-       (loop (unsafe-fx+ vertex-num vertex-count) (add1 i))]
-      [else vertex-num]))
-  ;; Unmap the vertex buffer (i.e. send the vertex data)
-  (glUnmapBuffer GL_ARRAY_BUFFER))
-
 
 (: send-vertex-data (-> gl-array-buffer
                         gl-program
@@ -274,41 +213,6 @@
 (define transform-data (make-bytes 48))
 (define transform-data-ptr (u8vector->cpointer transform-data))
 
-(: safe-send-transform-data (~> ([tbuf : gl-array-buffer]
-                                 [ps : (Refine [ps : (Vectorof draw-params)]
-                                               (< start end (len ps)))]
-                                 [start : Nonnegative-Fixnum]
-                                 [end : Nonnegative-Fixnum]
-                                 [vertex-count : Nonnegative-Fixnum])
-                                Any))
-(define (safe-send-transform-data tbuf ps start end vertex-count)
-  ;; Copy the transform data into a temporary buffer - it must be done here because `memcpy*` also
-  ;; reads from the buffer, which can be very slow from memory-mapped IO intended for writes
-  (define buffer-size (unsafe-fx* 48 vertex-count))
-  (define tmp-transform-data (get-tmp-transform-data buffer-size))
-  (define tmp-transform-data-ptr (u8vector->cpointer tmp-transform-data))
-  (let loop ([vertex-num : Nonnegative-Fixnum  0]
-            [i : Natural start])
-    (cond
-      [(< i end)
-       (define p (safe-vector-ref ps i))
-       (define v (shape-params-vertices (draw-params-shape-params p)))
-       (define vertex-count (vertices-vertex-count v))
-       (serialize-affine transform-data 0 (draw-params-affine p))
-       (memcpy* tmp-transform-data-ptr
-                (unsafe-fx* vertex-num 48)
-                transform-data-ptr
-                48
-                vertex-count)
-       (unsafe-fx+ vertex-num vertex-count)]
-      [else vertex-num]))
-  ;; Map the transform buffer into memory and copy into it
-  (gl-bind-array-buffer tbuf)
-  (define all-transform-data-ptr (gl-map-buffer-range/stream GL_ARRAY_BUFFER buffer-size))
-  (memcpy all-transform-data-ptr 0 tmp-transform-data-ptr buffer-size)
-  ;; Unmap the transform buffer (i.e. send the transform data)
-  (glUnmapBuffer GL_ARRAY_BUFFER))
-
 (: send-transform-data (-> gl-array-buffer
                            (Vectorof draw-params)
                            Nonnegative-Fixnum
@@ -342,46 +246,6 @@
   (memcpy all-transform-data-ptr 0 tmp-transform-data-ptr buffer-size)
   ;; Unmap the transform buffer (i.e. send the transform data)
   (glUnmapBuffer GL_ARRAY_BUFFER))
-
-(: safe-send-index-data (~> ([ibuf : gl-index-buffer]
-                             [ps : (Refine [ps : (Vectorof draw-params)]
-                                           (< start end (len ps)))]
-                             [start : Nonnegative-Fixnum]
-                             [end : Nonnegative-Fixnum]
-                             [index-count : Nonnegative-Fixnum])
-                            Any))
-(define (safe-send-index-data ibuf ps start end index-count)
-  ;; Copy the index data into the temporary buffer, shifted
-  (define tmp-index-data (get-tmp-index-data index-count))
-  (define tmp-index-data-ptr (u16vector->cpointer tmp-index-data))
-  (let loop ([vertex-num : Nonnegative-Fixnum  0]
-             [index-num : Nonnegative-Fixnum 0]
-             [i : Natural start])
-    (cond
-      [( < i end)
-       (define v (shape-params-vertices (draw-params-shape-params (safe-vector-ref ps i))))
-       (define indexes (vertices-indexes v))
-       (define vertex-count (vertices-vertex-count v))
-       (define index-count (vector-length indexes))
-       (let loop ([j : Natural 0])
-         (cond
-           [(< j index-count)
-            (define idx (safe-vector-ref indexes j))
-            (unsafe-u16vector-set! tmp-index-data
-                                   (unsafe-fx+ index-num j)
-                                   (unsafe-fx+ vertex-num idx))
-            (loop (add1 j))]))
-       (loop (unsafe-fx+ vertex-num vertex-count)
-             (unsafe-fx+ index-num index-count)
-             (add1 i))]
-      [else (values vertex-num index-num)]))
-  ;; Map the index buffer into memory and copy into it
-  (gl-bind-index-buffer ibuf)
-  (define buffer-size (unsafe-fx* 2 index-count))
-  (define all-index-data-ptr (gl-map-buffer-range/stream GL_ELEMENT_ARRAY_BUFFER buffer-size))
-  (memcpy all-index-data-ptr 0 tmp-index-data-ptr buffer-size)
-  ;; Unmap the index buffer (i.e. send the index data)
-  (glUnmapBuffer GL_ELEMENT_ARRAY_BUFFER))
 
 (: send-index-data (-> gl-index-buffer
                        (Vectorof draw-params)

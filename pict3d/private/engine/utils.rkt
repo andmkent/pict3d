@@ -157,7 +157,7 @@
 
 (: safe-group-by-key! (All (A K)
                            (~> ([xs : (Refine [xs : (Vectorof A)]
-                                              (< start end (len xs)))]
+                                              (<= start end (len xs)))]
                                 [start : Nonnegative-Fixnum]
                                 [end : Nonnegative-Fixnum]
                                 [key : (-> A K)])
