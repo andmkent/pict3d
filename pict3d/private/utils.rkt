@@ -301,44 +301,57 @@
     [(or (= n 0) (= m 0))
      (values (vector) (vector))]
     [else
-     (define all-xs ((inst make-vector X) n (vector-ref (first xss) 0)))
-     (define all-idxs ((inst make-vector Index) m 0))
+     (define all-xs : (Refine [all-xs : (Vectorof X)]
+                             (= n (len all-xs)))
+       ((inst make-vector X) n (vector-ref (first xss) 0)))
+     (define all-idxs : (Refine [all-idxs : (Vectorof Index)]
+                                (= m (len all-idxs)))
+       ((inst make-vector Index) m 0))
      ;; Mapping from x values to their new indexes
      (define x-hash ((inst make-hash X Index)))
      ;; For each indexed vector...
      (define-values (new-n new-m)
-       (for/fold ([n : Nonnegative-Fixnum  0]
-                  [m : Nonnegative-Fixnum  0])
-                 ([xs  (in-list xss)]
-                  [idxs  (in-list idxss)])
-         ;; Copy the x values
-         (let loop ([n : Nonnegative-Fixnum  n]
-                    [m : Nonnegative-Fixnum  m]
-                    [i : Natural 0])
-           (cond
-             [(< i (vector-length idxs))
-              ;; Look up x by its index j
-              (define j (safe-vector-ref idxs i))
-              (define x (vector-ref xs j))
-              ;; Determine whether we've seen it before
-              (define new-j (hash-ref x-hash x #f))
-              (cond [(not new-j)
-                     ;; If not, get a new index new-j and record it
-                     (define new-j (assert n index?))
-                     (hash-set! x-hash x new-j)
-                     ;; Copy x and its index
-                     (unsafe-vector-set! all-xs new-j x)
-                     (unsafe-vector-set! all-idxs m new-j)
-                     (loop (unsafe-fx+ n 1)
-                           (unsafe-fx+ m 1)
-                           (add1 i))]
-                    [else
-                     ;; If we've seen it before, just set the index
-                     (unsafe-vector-set! all-idxs m new-j)
-                     (loop n
-                           (unsafe-fx+ m 1)
-                           (add1 i))])]
-             [else (values n m)]))))
+       (let loop : (Values Nonnegative-Fixnum Nonnegative-Fixnum)
+         ([n1 : Nonnegative-Fixnum 0]
+          [m1 : Nonnegative-Fixnum 0]
+          [i : Natural 0]
+          [my-xss (cdr xss)]
+          [xs : (Vectorof X) (car xss)]
+          [my-idxss (cdr idxss)]
+          [idxs : (Vectorof Index) (car idxss)])
+         (cond
+           [(and (< i (vector-length idxs))
+                 (< m1 (vector-length all-idxs)))
+            ;; Look up x by its index j
+            (define j (safe-vector-ref idxs i))
+            (define x (vector-ref xs j))
+            ;; Determine whether we've seen it before
+            (define new-j (hash-ref x-hash x #f))
+            (cond [(not new-j)
+                   ;; If not, get a new index new-j and record it
+                   (define new-j (assert n1 index?))
+                   (hash-set! x-hash x new-j)
+                   ;; Copy x and its index
+                   (unsafe-vector-set! all-xs new-j x)
+                   (safe-vector-set! all-idxs m1 new-j)
+                   (loop (unsafe-fx+ n1 1)
+                         (unsafe-fx+ m1 1)
+                         (add1 i)
+                         (cdr my-xss)
+                         (car my-xss)
+                         (cdr my-idxss)
+                         (car my-idxss))]
+                  [else
+                   ;; If we've seen it before, just set the index
+                   (safe-vector-set! all-idxs m1 new-j)
+                   (loop n
+                         (unsafe-fx+ m1 1)
+                         (add1 i)
+                         (cdr my-xss)
+                         (car my-xss)
+                         (cdr my-idxss)
+                         (car my-idxss))])]
+           [else (values n1 m1)])))
      ;; Keep only the xs we need
      (values (if (= n new-n) all-xs (vector-copy all-xs 0 new-n))
              all-idxs)]))
